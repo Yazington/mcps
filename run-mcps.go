@@ -24,7 +24,7 @@ func main() {
 	context7Key := flag.String("context7", os.Getenv("CONTEXT7_API_KEY"), "Context7 API key (optional)")
 	githubToken := flag.String("github", githubEnvToken(), "GitHub token")
 	host := flag.String("host", "127.0.0.1", "Bind host for proxy")
-	basePort := flag.Int("port", 7010, "Base port (tavily uses base, then +1,+2,+3)")
+	basePort := flag.Int("port", 7010, "Base port (tavily uses base, then +1,+2,+3,+4,+5)")
 	flag.Parse()
 
 	if *tavilyKey == "" || *githubToken == "" {
@@ -38,6 +38,10 @@ func main() {
 	if githubPath == "" {
 		log.Fatal("GitHub MCP binary not found. Build it and add to PATH or place it in ~/bin (github-mcp-server or github-mcp-server.exe).")
 	}
+	repoRoot := resolveRepoRoot()
+	testVerifierEnv := testVerifierEnv(repoRoot)
+	testVerifierPath := filepath.Join(repoRoot, "test-verifier-mcp")
+	testRegistrarPath := filepath.Join(repoRoot, "test-registrar-mcp")
 	specs := []procSpec{
 		{
 			name: "tavily",
@@ -58,6 +62,16 @@ func main() {
 			name: "github",
 			cmd:  []string{"pnpm", "dlx", "mcp-proxy", "--host", *host, "--port", fmt.Sprintf("%d", *basePort+3), "--", githubPath, "stdio"},
 			env:  []string{"GITHUB_PERSONAL_ACCESS_TOKEN=" + *githubToken},
+		},
+		{
+			name: "test-verifier",
+			cmd:  []string{"pnpm", "dlx", "mcp-proxy", "--host", *host, "--port", fmt.Sprintf("%d", *basePort+4), "--", "go", "-C", testVerifierPath, "run", "."},
+			env:  testVerifierEnv,
+		},
+		{
+			name: "test-registrar",
+			cmd:  []string{"pnpm", "dlx", "mcp-proxy", "--host", *host, "--port", fmt.Sprintf("%d", *basePort+5), "--", "go", "-C", testRegistrarPath, "run", "."},
+			env:  testVerifierEnv,
 		},
 	}
 
@@ -115,6 +129,10 @@ func portFor(name string, base int) int {
 		return base + 2
 	case "github":
 		return base + 3
+	case "test-verifier":
+		return base + 4
+	case "test-registrar":
+		return base + 5
 	default:
 		return base
 	}
@@ -133,4 +151,51 @@ func githubEnvToken() string {
 		return v
 	}
 	return os.Getenv("GITHUB_API_KEY")
+}
+
+func testVerifierEnv(repoRoot string) []string {
+	path := testVerifierConfigPath(repoRoot)
+	return []string{"TEST_VERIFIER_CONFIG=" + path}
+}
+
+func testVerifierConfigPath(repoRoot string) string {
+	if repoRoot == "" {
+		return filepath.Join(".test-verifier", "command.json")
+	}
+	return filepath.Join(repoRoot, ".test-verifier", "command.json")
+}
+
+func resolveRepoRoot() string {
+	candidates := make([]string, 0, 2)
+	if exe, err := os.Executable(); err == nil && exe != "" {
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = resolved
+		}
+		candidates = append(candidates, filepath.Dir(exe))
+	}
+	if cwd, err := os.Getwd(); err == nil && cwd != "" {
+		candidates = append(candidates, cwd)
+	}
+
+	for _, dir := range candidates {
+		if dir == "" {
+			continue
+		}
+		if dirExists(filepath.Join(dir, "test-verifier-mcp")) && dirExists(filepath.Join(dir, "test-registrar-mcp")) {
+			return dir
+		}
+	}
+
+	if len(candidates) > 0 {
+		return candidates[0]
+	}
+	return ""
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }

@@ -1,7 +1,7 @@
 # MCP Launcher (Go)
 
 This folder contains `run-mcps.go`, a cross-platform Go launcher that starts
-shared MCP servers for Tavily, Context7, Playwright, and GitHub via a stdio→HTTP proxy.
+shared MCP servers for Tavily, Context7, Playwright, GitHub, and the test-registrar/test-verifier pair via a stdio→HTTP proxy.
 
 ## Prereqs
 
@@ -13,6 +13,8 @@ shared MCP servers for Tavily, Context7, Playwright, and GitHub via a stdio→HT
 ```bash
 go build -o run-mcps ./run-mcps.go
 ```
+
+Note: `run-mcps` locates the test-registrar/test-verifier folders relative to the binary (falling back to the current working directory). Keep `run-mcps` in the repo root or run it from the repo root.
 
 On Windows, you may want `run-mcps.exe`:
 
